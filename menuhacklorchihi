@@ -1,9 +1,10 @@
 -- ===================================================================
--- SCRIPT: QUOC HUY HUB v10.7 (AUTO HEAL SLOT 1-5 & AUTO ATTACK FREE)
--- COMPATIBILITY: PC & MOBILE (ANDROID / IOS EXECUTORS)
+-- SCRIPT: QUOC HUY HUB v10.9 (FIX ESP + ADVANCED AUTO PVP ENGINE)
+-- COMPATIBILITY: PC & ALL MOBILE EXECUTORS
 -- ===================================================================
 
 local player = game.Players.LocalPlayer
+local camera = workspace.CurrentCamera
 local mouse = player:GetMouse()
 local userInput = game:GetService("UserInputService")
 local runService = game:GetService("RunService")
@@ -20,7 +21,7 @@ local aimbotSmoothness = 0.2
 
 local autoHealEnabled = false
 local healHealthThreshold = 80
-local healSlotNumber = 1 -- chọn ô Máu (1 đến 5)
+local healSlotNumber = 1
 
 local autoAttackEnabled = false
 local attackRange = 25
@@ -33,12 +34,20 @@ local spinEnabled = false
 local spinSpeedVal = 50
 local fixLagEnabled = false
 
-local espEnabled = false
+-- ESP CONFIGS
 local boxEspEnabled = false
+local textEspEnabled = false
+local tracerEspEnabled = false
+local healthBarEnabled = false
+
+-- AUTO PVP CONFIGS
+local autoPvpEnabled = false
+local pvpToolName = ""
+local pvpTargetInput = ""
+local currentPvpTarget = nil
 
 local isHealDebounce = false
 local isCurrentlyHealing = false
-
 local selectedPlayerToTp = nil
 
 -- ===== CLEANUP OLD INSTANCES =====
@@ -51,7 +60,7 @@ espFolder.Name = "QuocHuyEspFolder"
 espFolder.Parent = coreGui
 
 -- ===== SCREEN SCALE =====
-local screenSize = workspace.CurrentCamera.ViewportSize
+local screenSize = camera.ViewportSize
 local scale = math.clamp(math.min(screenSize.X, screenSize.Y) / 800, 0.7, 1.1)
 
 -- ===== MAIN GUI =====
@@ -94,7 +103,7 @@ local titleText = Instance.new("TextLabel")
 titleText.Size = UDim2.new(0.75, 0, 1, 0)
 titleText.Position = UDim2.new(0, 16 * scale, 0, 0)
 titleText.BackgroundTransparency = 1
-titleText.Text = "❖ QUOC HUY HUB V1.0"
+titleText.Text = "❖ QUOC HUY HUB V1.1"
 titleText.TextColor3 = Color3.fromRGB(0, 255, 204)
 titleText.TextSize = 16 * scale
 titleText.Font = Enum.Font.GothamBold
@@ -105,8 +114,8 @@ local subTitle = Instance.new("TextLabel")
 subTitle.Size = UDim2.new(0.75, 0, 0, 14 * scale)
 subTitle.Position = UDim2.new(0, 16 * scale, 0.62, 0)
 subTitle.BackgroundTransparency = 1
-subTitle.Text = "Menu này cho mấy game óc cặc nhé hihi"
-subTitle.TextColor3 = Color3.fromRGB(180, 100, 255)
+subTitle.Text = "menu cho các game óc cặc hihi"
+subTitle.TextColor3 = Color3.fromRGB(255, 80, 120)
 subTitle.TextSize = 10 * scale
 subTitle.Font = Enum.Font.GothamMedium
 subTitle.TextXAlignment = Enum.TextXAlignment.Left
@@ -226,6 +235,29 @@ local function addToggle(parent, text, defaultState, callback, posY)
     end)
 end
 
+local function addTextBox(parent, placeholder, callback, posY)
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(1, -24 * scale, 0, 32 * scale)
+    box.Position = UDim2.new(0, 12 * scale, 0, posY * scale)
+    box.BackgroundColor3 = Color3.fromRGB(30, 30, 50)
+    box.PlaceholderText = placeholder
+    box.PlaceholderColor3 = Color3.fromRGB(130, 130, 160)
+    box.Text = ""
+    box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    box.TextSize = 11 * scale
+    box.Font = Enum.Font.GothamMedium
+    box.ClearTextOnFocus = false
+    box.Parent = parent
+
+    local bCorner = Instance.new("UICorner")
+    bCorner.CornerRadius = UDim.new(0, 8)
+    bCorner.Parent = box
+
+    box:GetPropertyChangedSignal("Text"):Connect(function()
+        callback(box.Text)
+    end)
+end
+
 local function addSlider(parent, text, minVal, maxVal, defaultVal, callback, posY)
     local container = Instance.new("Frame")
     container.Size = UDim2.new(1, -24 * scale, 0, 36 * scale)
@@ -294,119 +326,56 @@ local function addSlider(parent, text, minVal, maxVal, defaultVal, callback, pos
     end)
 end
 
--- ===== TELEPORT CARD =====
-local cardTp = createCard("🌀 TELEPORT TO PLAYER", 115)
+-- ===================================================================
+-- CARD: AUTO PVP ULTIMATE
+-- ===================================================================
+local cardPvp = createCard("⚔ AUTO PVP TARGET SYSTEM", 220)
 
-local dropBtn = Instance.new("TextButton")
-dropBtn.Size = UDim2.new(1, -24 * scale, 0, 32 * scale)
-dropBtn.Position = UDim2.new(0, 12 * scale, 0, 34 * scale)
-dropBtn.BackgroundColor3 = Color3.fromRGB(32, 32, 55)
-dropBtn.Text = "   Chọn Người Chơi... 🔽"
-dropBtn.TextColor3 = Color3.fromRGB(200, 210, 240)
-dropBtn.TextSize = 12 * scale
-dropBtn.Font = Enum.Font.GothamMedium
-dropBtn.TextXAlignment = Enum.TextXAlignment.Left
-dropBtn.Parent = cardTp
+addToggle(cardPvp, "🔥 Bật Auto PVP Rượt Đánh", false, function(v) 
+    autoPvpEnabled = v 
+    currentPvpTarget = nil
+end, 32)
 
-local dropCorner = Instance.new("UICorner")
-dropCorner.CornerRadius = UDim.new(0, 8)
-dropCorner.Parent = dropBtn
+addTextBox(cardPvp, "🗡 Nhập tên Tool/Vũ khí cần cầm pvp...", function(t) 
+    pvpToolName = t 
+end, 70)
 
-local dropListFrame = Instance.new("ScrollingFrame")
-dropListFrame.Size = UDim2.new(1, -24 * scale, 0, 110 * scale)
-dropListFrame.Position = UDim2.new(0, 12 * scale, 0, 70 * scale)
-dropListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
-dropListFrame.BorderSizePixel = 1
-dropListFrame.BorderColor3 = Color3.fromRGB(0, 255, 204)
-dropListFrame.Visible = false
-dropListFrame.ZIndex = 10
-dropListFrame.ScrollBarThickness = 4
-dropListFrame.Parent = cardTp
+local btnSwitchTarget = Instance.new("TextButton")
+btnSwitchTarget.Size = UDim2.new(1, -24 * scale, 0, 32 * scale)
+btnSwitchTarget.Position = UDim2.new(0, 12 * scale, 0, 110 * scale)
+btnSwitchTarget.BackgroundColor3 = Color3.fromRGB(255, 120, 0)
+btnSwitchTarget.Text = "🔄 ĐỔI MỤC TIÊU NGẪU NHIÊN"
+btnSwitchTarget.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnSwitchTarget.TextSize = 11 * scale
+btnSwitchTarget.Font = Enum.Font.GothamBold
+btnSwitchTarget.Parent = cardPvp
 
-local dropLayout = Instance.new("UIListLayout")
-dropLayout.SortOrder = Enum.SortOrder.LayoutOrder
-dropLayout.Parent = dropListFrame
+local swCorner = Instance.new("UICorner")
+swCorner.CornerRadius = UDim.new(0, 8)
+swCorner.Parent = btnSwitchTarget
 
-dropLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
-    dropListFrame.CanvasSize = UDim2.new(0, 0, 0, dropLayout.AbsoluteContentSize.Y)
-end)
+addTextBox(cardPvp, "🎯 Nhập tên Player cụ thể (Bỏ trống = Random)...", function(t) 
+    pvpTargetInput = t 
+end, 150)
 
-local function updatePlayerList()
-    for _, v in pairs(dropListFrame:GetChildren()) do
-        if v:IsA("TextButton") then v:Destroy() end
-    end
+-- ===================================================================
+-- CARD: MODERN ESP (FIXED 100%)
+-- ===================================================================
+local cardModernEsp = createCard("✨ FIXED ESP CYBERPUNK", 180)
+addToggle(cardModernEsp, "📦 Khung Box ESP 2D/Highlight", false, function(v) boxEspEnabled = v end, 34)
+addToggle(cardModernEsp, "❤️ Thanh Máu Đổi Màu Dynamic", false, function(v) healthBarEnabled = v end, 70)
+addToggle(cardModernEsp, "👁 Tên & Khoảng Cách Người Chơi", false, function(v) textEspEnabled = v end, 106)
+addToggle(cardModernEsp, "⚡ Đường Dây Tracers", false, function(v) tracerEspEnabled = v end, 142)
 
-    for _, p in pairs(players:GetPlayers()) do
-        if p ~= player then
-            local pBtn = Instance.new("TextButton")
-            pBtn.Size = UDim2.new(1, 0, 0, 26 * scale)
-            pBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 48)
-            pBtn.Text = "  " .. p.DisplayName .. " (@" .. p.Name .. ")"
-            pBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-            pBtn.TextSize = 11 * scale
-            pBtn.Font = Enum.Font.Gotham
-            pBtn.TextXAlignment = Enum.TextXAlignment.Left
-            pBtn.ZIndex = 11
-            pBtn.Parent = dropListFrame
-
-            pBtn.MouseButton1Click:Connect(function()
-                selectedPlayerToTp = p
-                dropBtn.Text = "   " .. p.Name .. " 🔽"
-                dropListFrame.Visible = false
-            end)
-        end
-    end
-end
-
-dropBtn.MouseButton1Click:Connect(function()
-    dropListFrame.Visible = not dropListFrame.Visible
-    if dropListFrame.Visible then
-        updatePlayerList()
-    end
-end)
-
-local btnTpAction = Instance.new("TextButton")
-btnTpAction.Size = UDim2.new(1, -24 * scale, 0, 32 * scale)
-btnTpAction.Position = UDim2.new(0, 12 * scale, 0, 72 * scale)
-btnTpAction.BackgroundColor3 = Color3.fromRGB(0, 180, 120)
-btnTpAction.Text = "⚡ TELEPORT NGAY"
-btnTpAction.TextColor3 = Color3.fromRGB(255, 255, 255)
-btnTpAction.TextSize = 12 * scale
-btnTpAction.Font = Enum.Font.GothamBold
-btnTpAction.Parent = cardTp
-
-local tpCorner = Instance.new("UICorner")
-tpCorner.CornerRadius = UDim.new(0, 8)
-tpCorner.Parent = btnTpAction
-
-btnTpAction.MouseButton1Click:Connect(function()
-    if selectedPlayerToTp and selectedPlayerToTp.Character and selectedPlayerToTp.Character:FindFirstChild("HumanoidRootPart") then
-        local myChar = player.Character
-        if myChar and myChar:FindFirstChild("HumanoidRootPart") then
-            myChar.HumanoidRootPart.CFrame = selectedPlayerToTp.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
-        end
-    else
-        game:GetService("StarterGui"):SetCore("SendNotification", {
-            Title = "Lỗi Teleport",
-            Text = "Hãy chọn người chơi hợp lệ!",
-            Duration = 3
-        })
-    end
-end)
-
--- ===== CARDS FUNCTION =====
-
--- CARD AUTO HEAL (CHỈ GIỮ CHỌN Ô MÁU 1-5)
+-- CARDS TÍNH NĂNG KHÁC
 local cardHeal = createCard("💚 AUTO HEAL (HOTBAR SLOT 1-5)", 150)
 addSlider(cardHeal, "Ô Chứa Máu Hotbar (Nút 1-5)", 1, 5, 1, function(v) healSlotNumber = v end, 34)
 addSlider(cardHeal, "Máu Dưới (%) Bơm", 10, 95, 80, function(v) healHealthThreshold = v end, 70)
 addToggle(cardHeal, "Bật Auto Heal Nút Hotbar", false, function(v) autoHealEnabled = v end, 108)
 
--- CARD AUTO ATTACK (ĐÃ XÓA CHỌN Ô - TỰ ĐỘNG)
-local cardAtk = createCard("⚔ AUTO ATTACK (TỰ ĐỘNG DÙNG VŨ KHÍ)", 75)
-addToggle(cardAtk, "Bật Tự Động Đánh Quái/Người", false, function(v) autoAttackEnabled = v end, 36)
+local cardAtk = createCard("⚔ AUTO ATTACK TỰ ĐỘNG", 75)
+addToggle(cardAtk, "Bật Tự Động Đánh Gần", false, function(v) autoAttackEnabled = v end, 36)
 
--- CARD FIX LAG VIP
 local cardFixLag = createCard("🚀 FIX LAG VIP (BOOST FPS)", 75)
 addToggle(cardFixLag, "Bật Fix Lag Super VIP", false, function(v) 
     fixLagEnabled = v
@@ -415,46 +384,41 @@ addToggle(cardFixLag, "Bật Fix Lag Super VIP", false, function(v)
             settings().Rendering.QualityLevel = 1
             lighting.GlobalShadows = false
             lighting.FogEnd = 9e9
-
             for _, obj in pairs(workspace:GetDescendants()) do
                 if obj:IsA("BasePart") then
                     obj.Material = Enum.Material.SmoothPlastic
                     obj.CastShadow = false
                 elseif obj:IsA("Decal") or obj:IsA("Texture") then
                     obj:Destroy()
-                elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") then
-                    obj.Enabled = false
                 end
             end
         end)
     end
 end)
 
--- CARD SPIN BOT
-local cardSpin = createCard("🌀 SPIN", 115)
+local cardSpin = createCard("🌀 SPIN BOT", 115)
 addToggle(cardSpin, "Bật Spin Bot", false, function(v) spinEnabled = v end, 36)
 addSlider(cardSpin, "Tốc Độ Xoay", 1, 200, 50, function(v) spinSpeedVal = v end, 72)
-
-local cardBoxEsp = createCard("📦 BOX ESP", 75)
-addToggle(cardBoxEsp, "Bật Viền Box ESP", false, function(v) boxEspEnabled = v end)
-
-local cardTextEsp = createCard("👁 PLAYER ESP", 75)
-addToggle(cardTextEsp, "Bật ESP Tên & Máu", false, function(v) espEnabled = v end)
 
 local cardHitbox = createCard("⬛ HITBOX EXPANDER", 75)
 addSlider(cardHitbox, "Size Hitbox", 1, 150, 1, function(v) hitboxSize = v end, 34)
 
-local cardAimbot = createCard("🎯 AIMBOT", 75)
+local cardAimbot = createCard("🎯 AIMBOT LOCK", 75)
 addToggle(cardAimbot, "Bật Aimbot Khóa Tâm", false, function(v) aimbotEnabled = v end)
 
 local cardSpeed = createCard("🏃 WALKSPEED", 75)
-addSlider(cardSpeed, "Tốc Độ", 16, 300, 16, function(v) speedVal = v end, 34)
+addSlider(cardSpeed, "Tốc Độ", 16, 300, 16, function(v) 
+    speedVal = v 
+    if player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+        player.Character:FindFirstChildOfClass("Humanoid").WalkSpeed = v
+    end
+end, 34)
 
-local cardFly = createCard("✈ FLY", 75)
+local cardFly = createCard("✈ FLY FLYING", 75)
 addToggle(cardFly, "Bật Mode Bay", false, function(v) 
     flyEnabled = v 
-    if not v and player.Character and player.Character:FindFirstChild("Humanoid") then
-        player.Character.Humanoid.PlatformStand = false
+    if not v and player.Character and player.Character:FindFirstChildOfClass("Humanoid") then
+        player.Character:FindFirstChildOfClass("Humanoid").PlatformStand = false
     end
 end)
 
@@ -471,90 +435,307 @@ btnToggle.MouseButton1Click:Connect(function()
 end)
 
 -- ===================================================================
--- SYSTEM KEYBOARD & TOUCH SIMULATION (BẤM NÚT HOTBAR MÁU 1-5)
+-- SYSTEM: ULTRA ROBUST ESP ENGINE (BILLBOARD & HIGHLIGHT COMBO)
 -- ===================================================================
 
-local keyCodes = {
-    [1] = Enum.KeyCode.One,
-    [2] = Enum.KeyCode.Two,
-    [3] = Enum.KeyCode.Three,
-    [4] = Enum.KeyCode.Four,
-    [5] = Enum.KeyCode.Five,
-}
+local espStorage = {}
 
-local function pressHotbarSlot(slot)
-    pcall(function()
-        local keyCode = keyCodes[slot]
-        if keyCode then
-            vim:SendKeyEvent(true, keyCode, false, game)
-            task.wait(0.01)
-            vim:SendKeyEvent(false, keyCode, false, game)
+local function createPlayerEsp(p)
+    if p == player then return end
+
+    local function setupChar(char)
+        if not char then return end
+        local hrp = char:WaitForChild("HumanoidRootPart", 5)
+        local hum = char:WaitForChild("Humanoid", 5)
+        local head = char:WaitForChild("Head", 5)
+        if not hrp or not hum or not head then return end
+
+        -- Highlight (Box ESP)
+        local hl = Instance.new("Highlight")
+        hl.Name = "EspHighlight"
+        hl.Adornee = char
+        hl.FillColor = Color3.fromRGB(0, 255, 204)
+        hl.FillTransparency = 0.85
+        hl.OutlineColor = Color3.fromRGB(0, 255, 204)
+        hl.OutlineTransparency = 0
+        hl.Enabled = boxEspEnabled
+        hl.Parent = espFolder
+
+        -- Billboard Text Info & Healthbar
+        local bb = Instance.new("BillboardGui")
+        bb.Name = "EspBillboard"
+        bb.Adornee = head
+        bb.Size = UDim2.new(0, 200, 0, 60)
+        bb.StudsOffset = Vector3.new(0, 2.8, 0)
+        bb.AlwaysOnTop = true
+        bb.Enabled = textEspEnabled or healthBarEnabled
+        bb.Parent = espFolder
+
+        local textLbl = Instance.new("TextLabel")
+        textLbl.Size = UDim2.new(1, 0, 0, 30)
+        textLbl.BackgroundTransparency = 1
+        textLbl.TextColor3 = Color3.fromRGB(255, 255, 255)
+        textLbl.TextStrokeTransparency = 0
+        textLbl.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+        textLbl.Font = Enum.Font.GothamBold
+        textLbl.TextSize = 12
+        textLbl.RichText = true
+        textLbl.Parent = bb
+
+        local healthBgFrame = Instance.new("Frame")
+        healthBgFrame.Size = UDim2.new(0, 80, 0, 5)
+        healthBgFrame.Position = UDim2.new(0.5, -40, 1, -10)
+        healthBgFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        healthBgFrame.BorderSizePixel = 0
+        healthBgFrame.Visible = healthBarEnabled
+        healthBgFrame.Parent = bb
+
+        local healthFillFrame = Instance.new("Frame")
+        healthFillFrame.Size = UDim2.new(1, 0, 1, 0)
+        healthFillFrame.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+        healthFillFrame.BorderSizePixel = 0
+        healthFillFrame.Parent = healthBgFrame
+
+        -- Tracers Line
+        local tracerLine = Instance.new("Frame")
+        tracerLine.AnchorPoint = Vector2.new(0.5, 0.5)
+        tracerLine.BackgroundColor3 = Color3.fromRGB(0, 255, 204)
+        tracerLine.BorderSizePixel = 0
+        tracerLine.Visible = false
+        tracerLine.Parent = gui
+
+        espStorage[p] = {
+            Highlight = hl,
+            Billboard = bb,
+            Text = textLbl,
+            HealthBg = healthBgFrame,
+            HealthFill = healthFillFrame,
+            Tracer = tracerLine
+        }
+    end
+
+    if p.Character then setupChar(p.Character) end
+    p.CharacterAdded:Connect(setupChar)
+end
+
+local function removePlayerEsp(p)
+    if espStorage[p] then
+        for _, v in pairs(espStorage[p]) do
+            if v and typeof(v) == "Instance" then v:Destroy() end
         end
+        espStorage[p] = nil
+    end
+end
 
-        local playerGui = player:FindFirstChild("PlayerGui")
-        if playerGui then
-            local hotbar = playerGui:FindFirstChild("Hotbar") or playerGui:FindFirstChild("Inventory") or playerGui:FindFirstChild("MainGui")
-            if hotbar then
-                local slotBtn = hotbar:FindFirstChild(tostring(slot), true) or hotbar:FindFirstChild("Slot" .. tostring(slot), true)
-                if slotBtn and slotBtn:IsA("GuiButton") then
-                    for _, conn in pairs(getconnections(slotBtn.MouseButton1Click)) do
-                        conn:Fire()
+for _, p in pairs(players:GetPlayers()) do createPlayerEsp(p) end
+players.PlayerAdded:Connect(createPlayerEsp)
+players.PlayerRemoving:Connect(removePlayerEsp)
+
+-- RENDER ESP LOOP
+runService.RenderStepped:Connect(function()
+    for p, esp in pairs(espStorage) do
+        if p and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChildOfClass("Humanoid") then
+            local char = p.Character
+            local hrp = char.HumanoidRootPart
+            local hum = char:FindFirstChildOfClass("Humanoid")
+
+            if hum.Health > 0 then
+                -- 1. Box Highlight
+                if esp.Highlight then
+                    esp.Highlight.Enabled = boxEspEnabled
+                end
+
+                -- 2. Text & Health Info
+                if esp.Billboard then
+                    esp.Billboard.Enabled = textEspEnabled or healthBarEnabled
+                    esp.HealthBg.Visible = healthBarEnabled
+
+                    local hpPercent = math.clamp(hum.Health / hum.MaxHealth, 0, 1)
+                    esp.HealthFill.Size = UDim2.new(hpPercent, 0, 1, 0)
+
+                    if hpPercent > 0.6 then
+                        esp.HealthFill.BackgroundColor3 = Color3.fromRGB(0, 255, 120)
+                    elseif hpPercent > 0.3 then
+                        esp.HealthFill.BackgroundColor3 = Color3.fromRGB(255, 200, 0)
+                    else
+                        esp.HealthFill.BackgroundColor3 = Color3.fromRGB(255, 40, 80)
                     end
+
+                    if player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                        local dist = math.floor((hrp.Position - player.Character.HumanoidRootPart.Position).Magnitude)
+                        if textEspEnabled then
+                            esp.Text.Text = string.format("<b>%s</b> <font color='#00FFCC'>[%dm]</font>\n<font color='#FF5078'>HP: %d%%</font>", p.DisplayName, dist, math.floor(hpPercent * 100))
+                        else
+                            esp.Text.Text = ""
+                        end
+                    end
+                end
+
+                -- 3. Tracers Line
+                if tracerEspEnabled and esp.Tracer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                    local hrpPos, onScreen = camera:WorldToViewportPoint(hrp.Position)
+                    if onScreen then
+                        local screenBottom = Vector2.new(camera.ViewportSize.X / 2, camera.ViewportSize.Y)
+                        local targetPos = Vector2.new(hrpPos.X, hrpPos.Y)
+                        local distance = (targetPos - screenBottom).Magnitude
+                        local angle = math.deg(math.atan2(targetPos.Y - screenBottom.Y, targetPos.X - screenBottom.X))
+
+                        esp.Tracer.Size = UDim2.new(0, distance, 0, 1.5)
+                        esp.Tracer.Position = UDim2.new(0, (screenBottom.X + targetPos.X) / 2, 0, (screenBottom.Y + targetPos.Y) / 2)
+                        esp.Tracer.Rotation = angle
+                        esp.Tracer.Visible = true
+                    else
+                        esp.Tracer.Visible = false
+                    end
+                elseif esp.Tracer then
+                    esp.Tracer.Visible = false
+                end
+            else
+                if esp.Highlight then esp.Highlight.Enabled = false end
+                if esp.Billboard then esp.Billboard.Enabled = false end
+                if esp.Tracer then esp.Tracer.Visible = false end
+            end
+        else
+            if esp.Highlight then esp.Highlight.Enabled = false end
+            if esp.Billboard then esp.Billboard.Enabled = false end
+            if esp.Tracer then esp.Tracer.Visible = false end
+        end
+    end
+end)
+
+-- ===================================================================
+-- ADVANCED AUTO PVP ENGINE & AUTO CHASE
+-- ===================================================================
+
+local function getTargetPlayer()
+    if pvpTargetInput ~= "" then
+        for _, p in pairs(players:GetPlayers()) do
+            if p ~= player and (string.find(string.lower(p.Name), string.lower(pvpTargetInput)) or string.find(string.lower(p.DisplayName), string.lower(pvpTargetInput))) then
+                if p.Character and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                    return p
+                end
+            end
+        end
+    end
+
+    local validPlayers = {}
+    for _, p in pairs(players:GetPlayers()) do
+        if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
+            if p.Character.Humanoid.Health > 0 then
+                table.insert(validPlayers, p)
+            end
+        end
+    end
+
+    if #validPlayers > 0 then
+        return validPlayers[math.random(1, #validPlayers)]
+    end
+    return nil
+end
+
+btnSwitchTarget.MouseButton1Click:Connect(function()
+    currentPvpTarget = getTargetPlayer()
+    if currentPvpTarget then
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "🎯 PVP TARGET SWITCH",
+            Text = "Đã đổi mục tiêu: " .. currentPvpTarget.DisplayName,
+            Duration = 3
+        })
+    end
+end)
+
+local function equipSpecificTool(name)
+    if name == "" then return end
+    pcall(function()
+        local backpack = player:FindFirstChild("Backpack")
+        local char = player.Character
+        if not char then return end
+
+        if backpack then
+            for _, tool in pairs(backpack:GetChildren()) do
+                if tool:IsA("Tool") and string.find(string.lower(tool.Name), string.lower(name)) then
+                    char:FindFirstChildOfClass("Humanoid"):EquipTool(tool)
+                    return
                 end
             end
         end
     end)
 end
 
--- ===================================================================
--- SYSTEM 1: HOTBAR AUTO HEAL (SLOT 1 TO 5)
--- ===================================================================
-
-local function doHotbarHeal()
-    if not autoHealEnabled or isHealDebounce then return end
-
-    local char = player.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if not hum or hum.Health <= 0 then return end
-
-    local healthPercent = (hum.Health / hum.MaxHealth) * 100
-    if healthPercent >= healHealthThreshold then return end
-
-    isHealDebounce = true
-    isCurrentlyHealing = true
-
-    task.spawn(function()
+-- MAIN PVP LOOP
+task.spawn(function()
+    while task.wait(0.03) do
         pcall(function()
-            -- Bấm phím / Nút Hotbar để chuyển sang ô máu
-            pressHotbarSlot(healSlotNumber)
-            task.wait(0.05)
+            if not autoPvpEnabled then return end
 
-            -- Bấm chuột / chạm màn hình để dùng máu
-            vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-            task.wait(0.02)
-            vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+            local char = player.Character
+            if not char then return end
+            local myHrp = char:FindFirstChild("HumanoidRootPart")
+            local myHum = char:FindFirstChildOfClass("Humanoid")
+            if not myHrp or not myHum or myHum.Health <= 0 then return end
 
-            task.wait(0.15)
+            -- Kiểm tra và tìm mục tiêu
+            if not currentPvpTarget or not currentPvpTarget.Character or not currentPvpTarget.Character:FindFirstChild("HumanoidRootPart") or not currentPvpTarget.Character:FindFirstChild("Humanoid") or currentPvpTarget.Character.Humanoid.Health <= 0 then
+                currentPvpTarget = getTargetPlayer()
+            end
+
+            if currentPvpTarget and currentPvpTarget.Character then
+                local enemyHrp = currentPvpTarget.Character:FindFirstChild("HumanoidRootPart")
+                local enemyHum = currentPvpTarget.Character:FindFirstChild("Humanoid")
+
+                if enemyHrp and enemyHum and enemyHum.Health > 0 then
+                    -- 1. Equip Tool
+                    if pvpToolName ~= "" then
+                        equipSpecificTool(pvpToolName)
+                    end
+
+                    -- 2. Teleport / Bay sát đối thủ
+                    myHrp.CFrame = enemyHrp.CFrame * CFrame.new(0, 0, 2.5)
+
+                    -- 3. Quay mặt về đối thủ
+                    myHrp.CFrame = CFrame.new(myHrp.Position, Vector3.new(enemyHrp.Position.X, myHrp.Position.Y, enemyHrp.Position.Z))
+
+                    -- 4. Auto Attack
+                    local tool = char:FindFirstChildOfClass("Tool")
+                    if tool then
+                        tool:Activate()
+                    else
+                        vim:SendMouseButtonEvent(0, 0, 0, true, game, 1)
+                        task.wait(0.01)
+                        vim:SendMouseButtonEvent(0, 0, 0, false, game, 1)
+                    end
+                end
+            end
         end)
+    end
+end)
 
-        isCurrentlyHealing = false
-        task.wait(0.1)
-        isHealDebounce = false
-    end)
-end
+-- AUTO HEAL & REGULAR AUTO ATTACK
+local keyCodes = {[1] = Enum.KeyCode.One, [2] = Enum.KeyCode.Two, [3] = Enum.KeyCode.Three, [4] = Enum.KeyCode.Four, [5] = Enum.KeyCode.Five}
 
 task.spawn(function()
-    while task.wait(0.05) do
+    while task.wait(0.1) do
         pcall(function()
             if autoHealEnabled and not isHealDebounce then
                 local char = player.Character
                 if char then
                     local hum = char:FindFirstChildOfClass("Humanoid")
-                    if hum and hum.Health > 0 then
-                        if ((hum.Health / hum.MaxHealth) * 100) < healHealthThreshold then
-                            doHotbarHeal()
+                    if hum and hum.Health > 0 and ((hum.Health / hum.MaxHealth) * 100) < healHealthThreshold then
+                        isHealDebounce = true
+                        isCurrentlyHealing = true
+                        local keyCode = keyCodes[healSlotNumber]
+                        if keyCode then
+                            vim:SendKeyEvent(true, keyCode, false, game)
+                            task.wait(0.01)
+                            vim:SendKeyEvent(false, keyCode, false, game)
                         end
+                        task.wait(0.05)
+                        local activeTool = char:FindFirstChildOfClass("Tool")
+                        if activeTool then activeTool:Activate() end
+                        task.wait(0.2)
+                        isCurrentlyHealing = false
+                        task.wait(0.1)
+                        isHealDebounce = false
                     end
                 end
             end
@@ -562,168 +743,12 @@ task.spawn(function()
     end
 end)
 
--- ===================================================================
--- SYSTEM 2: SMART AUTO ATTACK (KHÔNG CẦN CHỌN Ô)
--- ===================================================================
-
-task.spawn(function()
-    while task.wait(0.08) do
-        pcall(function()
-            if not autoAttackEnabled or isCurrentlyHealing or isHealDebounce then return end
-
-            local char = player.Character
-            if not char then return end
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if not hum or hum.Health <= 0 or not hrp then return end
-
-            local closestTarget = nil
-            local minDistance = attackRange
-
-            for _, p in pairs(players:GetPlayers()) do
-                if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
-                    if p.Character.Humanoid.Health > 0 then
-                        local enemyHrp = p.Character.HumanoidRootPart
-                        local dist = (enemyHrp.Position - hrp.Position).Magnitude
-                        if dist < minDistance then
-                            minDistance = dist
-                            closestTarget = enemyHrp
-                        end
-                    end
-                end
-            end
-
-            if closestTarget then
-                if not spinEnabled then
-                    hrp.CFrame = CFrame.new(hrp.Position, Vector3.new(closestTarget.Position.X, hrp.Position.Y, closestTarget.Position.Z))
-                end
-
-                -- Tự động kích hoạt đòn đánh dựa theo món vũ khí đang cầm trên tay
-                local activeTool = char:FindFirstChildOfClass("Tool")
-                if activeTool then
-                    activeTool:Activate()
-                else
-                    vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
-                    task.wait(0.01)
-                    vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
-                end
-            end
-        end)
-    end
-end)
-
--- ===================================================================
--- SYSTEM 3: SPIN BOT MECHANISM
--- ===================================================================
-
+-- SPIN BOT & SPEED & FLY & AIMBOT & HITBOX
 runService.RenderStepped:Connect(function()
-    if spinEnabled then
-        local char = player.Character
-        if char then
-            local hrp = char:FindFirstChild("HumanoidRootPart")
-            if hrp then
-                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinSpeedVal), 0)
-            end
-        end
-    end
-end)
-
--- ===================================================================
--- SYSTEM 4: ESP & UTILITIES
--- ===================================================================
-
-local function applyEspToPlayer(plr)
-    if plr == player then return end
-
-    local function setupChar(char)
-        if not char then return end
-
-        local highlight = espFolder:FindFirstChild(plr.Name .. "_Highlight") or Instance.new("Highlight")
-        highlight.Name = plr.Name .. "_Highlight"
-        highlight.FillColor = Color3.fromRGB(180, 50, 255)
-        highlight.FillTransparency = 0.6
-        highlight.OutlineColor = Color3.fromRGB(0, 255, 204)
-        highlight.OutlineTransparency = 0
-        highlight.Adornee = char
-        highlight.Enabled = false
-        highlight.Parent = espFolder
-
-        local hrp = char:WaitForChild("HumanoidRootPart", 5)
-        if not hrp then return end
-
-        local bbGui = espFolder:FindFirstChild(plr.Name .. "_BBGui") or Instance.new("BillboardGui")
-        bbGui.Name = plr.Name .. "_BBGui"
-        bbGui.AlwaysOnTop = true
-        bbGui.Size = UDim2.new(0, 200, 0, 45)
-        bbGui.StudsOffset = Vector3.new(0, 3.8, 0)
-        bbGui.Adornee = hrp
-        bbGui.Enabled = false
-        bbGui.Parent = espFolder
-
-        local nameTxt = bbGui:FindFirstChild("NameTxt") or Instance.new("TextLabel")
-        nameTxt.Name = "NameTxt"
-        nameTxt.Size = UDim2.new(1, 0, 0.5, 0)
-        nameTxt.BackgroundTransparency = 1
-        nameTxt.TextColor3 = Color3.fromRGB(0, 255, 204)
-        nameTxt.TextStrokeTransparency = 0.2
-        nameTxt.Font = Enum.Font.GothamBold
-        nameTxt.TextSize = 13 * scale
-        nameTxt.Parent = bbGui
-
-        local hpTxt = bbGui:FindFirstChild("HpTxt") or Instance.new("TextLabel")
-        hpTxt.Name = "HpTxt"
-        hpTxt.Size = UDim2.new(1, 0, 0.5, 0)
-        hpTxt.Position = UDim2.new(0, 0, 0.5, 0)
-        hpTxt.BackgroundTransparency = 1
-        hpTxt.TextColor3 = Color3.fromRGB(255, 80, 120)
-        hpTxt.TextStrokeTransparency = 0.2
-        hpTxt.Font = Enum.Font.GothamMedium
-        hpTxt.TextSize = 11 * scale
-        hpTxt.Parent = bbGui
+    if spinEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        player.Character.HumanoidRootPart.CFrame = player.Character.HumanoidRootPart.CFrame * CFrame.Angles(0, math.rad(spinSpeedVal), 0)
     end
 
-    if plr.Character then setupChar(plr.Character) end
-    plr.CharacterAdded:Connect(setupChar)
-end
-
-for _, p in pairs(players:GetPlayers()) do applyEspToPlayer(p) end
-players.PlayerAdded:Connect(applyEspToPlayer)
-
-runService.RenderStepped:Connect(function()
-    for _, p in pairs(players:GetPlayers()) do
-        if p ~= player then
-            local highlight = espFolder:FindFirstChild(p.Name .. "_Highlight")
-            local bbGui = espFolder:FindFirstChild(p.Name .. "_BBGui")
-
-            if p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("HumanoidRootPart") then
-                local hum = p.Character.Humanoid
-                local hrp = p.Character.HumanoidRootPart
-
-                if hum.Health > 0 then
-                    if highlight then highlight.Enabled = boxEspEnabled end
-                    if bbGui then
-                        bbGui.Enabled = espEnabled
-                        if espEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            local myHrp = player.Character.HumanoidRootPart
-                            local dist = math.floor((hrp.Position - myHrp.Position).Magnitude)
-                            bbGui.NameTxt.Text = p.Name .. " [" .. tostring(dist) .. "m]"
-                            bbGui.HpTxt.Text = "HP: " .. tostring(math.floor(hum.Health)) .. "/" .. tostring(math.floor(hum.MaxHealth))
-                        end
-                    end
-                else
-                    if highlight then highlight.Enabled = false end
-                    if bbGui then bbGui.Enabled = false end
-                end
-            else
-                if highlight then highlight.Enabled = false end
-                if bbGui then bbGui.Enabled = false end
-            end
-        end
-    end
-end)
-
--- HITBOX
-runService.RenderStepped:Connect(function()
     if hitboxSize > 1 then
         for _, p in pairs(players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
@@ -736,19 +761,14 @@ runService.RenderStepped:Connect(function()
             end
         end
     end
-end)
 
--- AIMBOT
-runService.RenderStepped:Connect(function()
     if aimbotEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-        local cam = workspace.CurrentCamera
         local closestTarget = nil
         local maxDist = 250
-
         for _, p in pairs(players:GetPlayers()) do
             if p ~= player and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
                 local head = p.Character.Head
-                local screenPos, onScreen = cam:WorldToViewportPoint(head.Position)
+                local screenPos, onScreen = camera:WorldToViewportPoint(head.Position)
                 if onScreen then
                     local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
                     if mouseDist < maxDist then
@@ -758,43 +778,33 @@ runService.RenderStepped:Connect(function()
                 end
             end
         end
-
         if closestTarget then
-            cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, closestTarget.Position), aimbotSmoothness)
+            camera.CFrame = camera.CFrame:Lerp(CFrame.new(camera.CFrame.Position, closestTarget.Position), aimbotSmoothness)
         end
     end
-end)
 
--- SPEED & FLY
-runService.RenderStepped:Connect(function()
     local char = player.Character
-    if not char then return end
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-
-    if hum and hum.Health > 0 then
-        hum.WalkSpeed = speedVal
-    end
-
-    if flyEnabled and hrp and hum then
-        hum.PlatformStand = true
-        local cam = workspace.CurrentCamera
-        local moveDir = Vector3.zero
-
-        if userInput:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
-        if userInput:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
-        if userInput:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
-        if userInput:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
-        if userInput:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
-        if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
-
-        hrp.Velocity = moveDir * (flySpeedVal * 4)
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        local hrp = char:FindFirstChild("HumanoidRootPart")
+        if hum and hum.Health > 0 then hum.WalkSpeed = speedVal end
+        if flyEnabled and hrp and hum then
+            hum.PlatformStand = true
+            local moveDir = Vector3.zero
+            if userInput:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + camera.CFrame.LookVector end
+            if userInput:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - camera.CFrame.LookVector end
+            if userInput:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - camera.CFrame.RightVector end
+            if userInput:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + camera.CFrame.RightVector end
+            if userInput:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+            if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+            hrp.Velocity = moveDir * (flySpeedVal * 4)
+        end
     end
 end)
 
 -- NOTIFICATION
 game:GetService("StarterGui"):SetCore("SendNotification", {
-    Title = "❖ QUOC HUY HUB V1.0",
-    Text = "Bố mày là vua",
-    Duration = 6
+    Title = "❖ QUOC HUY HUB V1.1",
+    Text = "Bố là nhà vua",
+    Duration = 5
 })
