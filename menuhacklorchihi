@@ -1,1 +1,800 @@
+-- ===================================================================
+-- SCRIPT: QUOC HUY HUB v10.7 (AUTO HEAL SLOT 1-5 & AUTO ATTACK FREE)
+-- COMPATIBILITY: PC & MOBILE (ANDROID / IOS EXECUTORS)
+-- ===================================================================
 
+local player = game.Players.LocalPlayer
+local mouse = player:GetMouse()
+local userInput = game:GetService("UserInputService")
+local runService = game:GetService("RunService")
+local players = game:GetService("Players")
+local tweenService = game:GetService("TweenService")
+local coreGui = game:GetService("CoreGui")
+local vim = game:GetService("VirtualInputManager")
+local lighting = game:GetService("Lighting")
+
+-- ===== CONFIG & GLOBALS =====
+local hitboxSize = 1
+local aimbotEnabled = false
+local aimbotSmoothness = 0.2
+
+local autoHealEnabled = false
+local healHealthThreshold = 80
+local healSlotNumber = 1 -- chọn ô Máu (1 đến 5)
+
+local autoAttackEnabled = false
+local attackRange = 25
+
+local speedVal = 16
+local flyEnabled = false
+local flySpeedVal = 15
+
+local spinEnabled = false
+local spinSpeedVal = 50
+local fixLagEnabled = false
+
+local espEnabled = false
+local boxEspEnabled = false
+
+local isHealDebounce = false
+local isCurrentlyHealing = false
+
+local selectedPlayerToTp = nil
+
+-- ===== CLEANUP OLD INSTANCES =====
+for _, v in pairs({coreGui:FindFirstChild("QuocHuyHubV10"), player.PlayerGui:FindFirstChild("QuocHuyHubV10"), coreGui:FindFirstChild("QuocHuyEspFolder")}) do
+    if v then v:Destroy() end
+end
+
+local espFolder = Instance.new("Folder")
+espFolder.Name = "QuocHuyEspFolder"
+espFolder.Parent = coreGui
+
+-- ===== SCREEN SCALE =====
+local screenSize = workspace.CurrentCamera.ViewportSize
+local scale = math.clamp(math.min(screenSize.X, screenSize.Y) / 800, 0.7, 1.1)
+
+-- ===== MAIN GUI =====
+local gui = Instance.new("ScreenGui")
+gui.Name = "QuocHuyHubV10"
+gui.ResetOnSpawn = false
+gui.Parent = coreGui
+if not gui.Parent then gui.Parent = player.PlayerGui end
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Name = "MainFrame"
+mainFrame.Size = UDim2.new(0, 390 * scale, 0, 560 * scale)
+mainFrame.Position = UDim2.new(0.5, -(195 * scale), 0.5, -(280 * scale))
+mainFrame.BackgroundColor3 = Color3.fromRGB(15, 15, 26)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.Active = true
+mainFrame.Draggable = true
+mainFrame.Parent = gui
+
+local corner = Instance.new("UICorner")
+corner.CornerRadius = UDim.new(0, 16)
+corner.Parent = mainFrame
+
+local border = Instance.new("UIStroke")
+border.Color = Color3.fromRGB(0, 255, 204)
+border.Thickness = 2
+border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+border.Parent = mainFrame
+
+-- ===== HEADER BAR =====
+local titleBar = Instance.new("Frame")
+titleBar.Name = "TitleBar"
+titleBar.Size = UDim2.new(1, 0, 0, 50 * scale)
+titleBar.BackgroundColor3 = Color3.fromRGB(25, 25, 45)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = mainFrame
+
+local titleText = Instance.new("TextLabel")
+titleText.Size = UDim2.new(0.75, 0, 1, 0)
+titleText.Position = UDim2.new(0, 16 * scale, 0, 0)
+titleText.BackgroundTransparency = 1
+titleText.Text = "❖ QUOC HUY HUB V10.7"
+titleText.TextColor3 = Color3.fromRGB(0, 255, 204)
+titleText.TextSize = 16 * scale
+titleText.Font = Enum.Font.GothamBold
+titleText.TextXAlignment = Enum.TextXAlignment.Left
+titleText.Parent = titleBar
+
+local subTitle = Instance.new("TextLabel")
+subTitle.Size = UDim2.new(0.75, 0, 0, 14 * scale)
+subTitle.Position = UDim2.new(0, 16 * scale, 0.62, 0)
+subTitle.BackgroundTransparency = 1
+subTitle.Text = "Auto Heal Slot (1-5) & Smart Auto Attack"
+subTitle.TextColor3 = Color3.fromRGB(180, 100, 255)
+subTitle.TextSize = 10 * scale
+subTitle.Font = Enum.Font.GothamMedium
+subTitle.TextXAlignment = Enum.TextXAlignment.Left
+subTitle.Parent = titleBar
+
+local btnToggle = Instance.new("TextButton")
+btnToggle.Size = UDim2.new(0, 32 * scale, 0, 32 * scale)
+btnToggle.Position = UDim2.new(1, -(40 * scale), 0, 9 * scale)
+btnToggle.BackgroundColor3 = Color3.fromRGB(255, 50, 100)
+btnToggle.Text = "━"
+btnToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnToggle.TextSize = 14 * scale
+btnToggle.Font = Enum.Font.GothamBold
+btnToggle.Parent = titleBar
+
+local btnCorner = Instance.new("UICorner")
+btnCorner.CornerRadius = UDim.new(0, 10)
+btnCorner.Parent = btnToggle
+
+-- ===== CONTENT FRAME =====
+local contentFrame = Instance.new("ScrollingFrame")
+contentFrame.Name = "Content"
+contentFrame.Size = UDim2.new(1, -20 * scale, 1, -60 * scale)
+contentFrame.Position = UDim2.new(0, 10 * scale, 0, 55 * scale)
+contentFrame.BackgroundTransparency = 1
+contentFrame.BorderSizePixel = 0
+contentFrame.ScrollBarThickness = 4
+contentFrame.ScrollBarImageColor3 = Color3.fromRGB(0, 255, 204)
+contentFrame.Parent = mainFrame
+
+local uiList = Instance.new("UIListLayout")
+uiList.SortOrder = Enum.SortOrder.LayoutOrder
+uiList.Padding = UDim.new(0, 12 * scale)
+uiList.Parent = contentFrame
+
+uiList:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    contentFrame.CanvasSize = UDim2.new(0, 0, 0, uiList.AbsoluteContentSize.Y + 30)
+end)
+
+-- ===== UI BUILDER FUNCTIONS =====
+local function createCard(title, height)
+    local card = Instance.new("Frame")
+    card.Size = UDim2.new(1, -6, 0, (height or 75) * scale)
+    card.BackgroundColor3 = Color3.fromRGB(22, 22, 38)
+    card.BorderSizePixel = 0
+    card.Parent = contentFrame
+
+    local cardCorner = Instance.new("UICorner")
+    cardCorner.CornerRadius = UDim.new(0, 10)
+    cardCorner.Parent = card
+
+    local cardStroke = Instance.new("UIStroke")
+    cardStroke.Color = Color3.fromRGB(45, 45, 75)
+    cardStroke.Thickness = 1
+    cardStroke.Parent = card
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(1, -20, 0, 25 * scale)
+    label.Position = UDim2.new(0, 12 * scale, 0, 6 * scale)
+    label.BackgroundTransparency = 1
+    label.Text = title
+    label.TextColor3 = Color3.fromRGB(0, 255, 204)
+    label.TextSize = 13 * scale
+    label.Font = Enum.Font.GothamBold
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = card
+
+    return card
+end
+
+local function addToggle(parent, text, defaultState, callback, posY)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -24 * scale, 0, 32 * scale)
+    container.Position = UDim2.new(0, 12 * scale, 0, (posY or 36) * scale)
+    container.BackgroundTransparency = 1
+    container.Parent = parent
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.65, 0, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text
+    label.TextColor3 = Color3.fromRGB(220, 225, 245)
+    label.TextSize = 12 * scale
+    label.Font = Enum.Font.GothamMedium
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+
+    local switch = Instance.new("TextButton")
+    switch.Size = UDim2.new(0, 46 * scale, 0, 24 * scale)
+    switch.Position = UDim2.new(1, -(46 * scale), 0.5, -(12 * scale))
+    switch.BackgroundColor3 = defaultState and Color3.fromRGB(0, 220, 130) or Color3.fromRGB(50, 50, 70)
+    switch.Text = ""
+    switch.AutoButtonColor = false
+    switch.Parent = container
+
+    local swCorner = Instance.new("UICorner")
+    swCorner.CornerRadius = UDim.new(1, 0)
+    swCorner.Parent = switch
+
+    local dot = Instance.new("Frame")
+    dot.Size = UDim2.new(0, 18 * scale, 0, 18 * scale)
+    dot.Position = defaultState and UDim2.new(1, -(21 * scale), 0.5, -(9 * scale)) or UDim2.new(0, 3 * scale, 0.5, -(9 * scale))
+    dot.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    dot.BorderSizePixel = 0
+    dot.Parent = switch
+
+    local dotCorner = Instance.new("UICorner")
+    dotCorner.CornerRadius = UDim.new(1, 0)
+    dotCorner.Parent = dot
+
+    local state = defaultState
+    switch.MouseButton1Click:Connect(function()
+        state = not state
+        switch.BackgroundColor3 = state and Color3.fromRGB(0, 220, 130) or Color3.fromRGB(50, 50, 70)
+        dot:TweenPosition(state and UDim2.new(1, -(21 * scale), 0.5, -(9 * scale)) or UDim2.new(0, 3 * scale, 0.5, -(9 * scale)), "Out", "Quad", 0.15, true)
+        callback(state)
+    end)
+end
+
+local function addSlider(parent, text, minVal, maxVal, defaultVal, callback, posY)
+    local container = Instance.new("Frame")
+    container.Size = UDim2.new(1, -24 * scale, 0, 36 * scale)
+    container.Position = UDim2.new(0, 12 * scale, 0, (posY or 36) * scale)
+    container.BackgroundTransparency = 1
+    container.Parent = parent
+
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.7, 0, 0, 18 * scale)
+    label.BackgroundTransparency = 1
+    label.Text = text .. ": " .. tostring(defaultVal)
+    label.TextColor3 = Color3.fromRGB(220, 225, 245)
+    label.TextSize = 12 * scale
+    label.Font = Enum.Font.GothamMedium
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = container
+
+    local sliderBg = Instance.new("TextButton")
+    sliderBg.Size = UDim2.new(1, 0, 0, 8 * scale)
+    sliderBg.Position = UDim2.new(0, 0, 1, -(8 * scale))
+    sliderBg.BackgroundColor3 = Color3.fromRGB(40, 40, 65)
+    sliderBg.Text = ""
+    sliderBg.AutoButtonColor = false
+    sliderBg.Parent = container
+
+    local bgCorner = Instance.new("UICorner")
+    bgCorner.CornerRadius = UDim.new(1, 0)
+    bgCorner.Parent = sliderBg
+
+    local fill = Instance.new("Frame")
+    fill.Size = UDim2.new((defaultVal - minVal) / (maxVal - minVal), 0, 1, 0)
+    fill.BackgroundColor3 = Color3.fromRGB(180, 100, 255)
+    fill.BorderSizePixel = 0
+    fill.Parent = sliderBg
+
+    local fillCorner = Instance.new("UICorner")
+    fillCorner.CornerRadius = UDim.new(1, 0)
+    fillCorner.Parent = fill
+
+    local dragging = false
+    local function update(input)
+        local pos = math.clamp((input.Position.X - sliderBg.AbsolutePosition.X) / sliderBg.AbsoluteSize.X, 0, 1)
+        local val = math.floor(minVal + (maxVal - minVal) * pos)
+        fill.Size = UDim2.new(pos, 0, 1, 0)
+        label.Text = text .. ": " .. tostring(val)
+        callback(val)
+    end
+
+    sliderBg.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = true
+            update(input)
+        end
+    end)
+
+    userInput.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+            dragging = false
+        end
+    end)
+
+    userInput.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            update(input)
+        end
+    end)
+end
+
+-- ===== TELEPORT CARD =====
+local cardTp = createCard("🌀 TELEPORT TO PLAYER", 115)
+
+local dropBtn = Instance.new("TextButton")
+dropBtn.Size = UDim2.new(1, -24 * scale, 0, 32 * scale)
+dropBtn.Position = UDim2.new(0, 12 * scale, 0, 34 * scale)
+dropBtn.BackgroundColor3 = Color3.fromRGB(32, 32, 55)
+dropBtn.Text = "   Chọn Người Chơi... 🔽"
+dropBtn.TextColor3 = Color3.fromRGB(200, 210, 240)
+dropBtn.TextSize = 12 * scale
+dropBtn.Font = Enum.Font.GothamMedium
+dropBtn.TextXAlignment = Enum.TextXAlignment.Left
+dropBtn.Parent = cardTp
+
+local dropCorner = Instance.new("UICorner")
+dropCorner.CornerRadius = UDim.new(0, 8)
+dropCorner.Parent = dropBtn
+
+local dropListFrame = Instance.new("ScrollingFrame")
+dropListFrame.Size = UDim2.new(1, -24 * scale, 0, 110 * scale)
+dropListFrame.Position = UDim2.new(0, 12 * scale, 0, 70 * scale)
+dropListFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 35)
+dropListFrame.BorderSizePixel = 1
+dropListFrame.BorderColor3 = Color3.fromRGB(0, 255, 204)
+dropListFrame.Visible = false
+dropListFrame.ZIndex = 10
+dropListFrame.ScrollBarThickness = 4
+dropListFrame.Parent = cardTp
+
+local dropLayout = Instance.new("UIListLayout")
+dropLayout.SortOrder = Enum.SortOrder.LayoutOrder
+dropLayout.Parent = dropListFrame
+
+dropLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+    dropListFrame.CanvasSize = UDim2.new(0, 0, 0, dropLayout.AbsoluteContentSize.Y)
+end)
+
+local function updatePlayerList()
+    for _, v in pairs(dropListFrame:GetChildren()) do
+        if v:IsA("TextButton") then v:Destroy() end
+    end
+
+    for _, p in pairs(players:GetPlayers()) do
+        if p ~= player then
+            local pBtn = Instance.new("TextButton")
+            pBtn.Size = UDim2.new(1, 0, 0, 26 * scale)
+            pBtn.BackgroundColor3 = Color3.fromRGB(28, 28, 48)
+            pBtn.Text = "  " .. p.DisplayName .. " (@" .. p.Name .. ")"
+            pBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            pBtn.TextSize = 11 * scale
+            pBtn.Font = Enum.Font.Gotham
+            pBtn.TextXAlignment = Enum.TextXAlignment.Left
+            pBtn.ZIndex = 11
+            pBtn.Parent = dropListFrame
+
+            pBtn.MouseButton1Click:Connect(function()
+                selectedPlayerToTp = p
+                dropBtn.Text = "   " .. p.Name .. " 🔽"
+                dropListFrame.Visible = false
+            end)
+        end
+    end
+end
+
+dropBtn.MouseButton1Click:Connect(function()
+    dropListFrame.Visible = not dropListFrame.Visible
+    if dropListFrame.Visible then
+        updatePlayerList()
+    end
+end)
+
+local btnTpAction = Instance.new("TextButton")
+btnTpAction.Size = UDim2.new(1, -24 * scale, 0, 32 * scale)
+btnTpAction.Position = UDim2.new(0, 12 * scale, 0, 72 * scale)
+btnTpAction.BackgroundColor3 = Color3.fromRGB(0, 180, 120)
+btnTpAction.Text = "⚡ TELEPORT NGAY"
+btnTpAction.TextColor3 = Color3.fromRGB(255, 255, 255)
+btnTpAction.TextSize = 12 * scale
+btnTpAction.Font = Enum.Font.GothamBold
+btnTpAction.Parent = cardTp
+
+local tpCorner = Instance.new("UICorner")
+tpCorner.CornerRadius = UDim.new(0, 8)
+tpCorner.Parent = btnTpAction
+
+btnTpAction.MouseButton1Click:Connect(function()
+    if selectedPlayerToTp and selectedPlayerToTp.Character and selectedPlayerToTp.Character:FindFirstChild("HumanoidRootPart") then
+        local myChar = player.Character
+        if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+            myChar.HumanoidRootPart.CFrame = selectedPlayerToTp.Character.HumanoidRootPart.CFrame * CFrame.new(0, 0, 3)
+        end
+    else
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "Lỗi Teleport",
+            Text = "Hãy chọn người chơi hợp lệ!",
+            Duration = 3
+        })
+    end
+end)
+
+-- ===== CARDS FUNCTION =====
+
+-- CARD AUTO HEAL (CHỈ GIỮ CHỌN Ô MÁU 1-5)
+local cardHeal = createCard("💚 AUTO HEAL (HOTBAR SLOT 1-5)", 150)
+addSlider(cardHeal, "Ô Chứa Máu Hotbar (Nút 1-5)", 1, 5, 1, function(v) healSlotNumber = v end, 34)
+addSlider(cardHeal, "Máu Dưới (%) Bơm", 10, 95, 80, function(v) healHealthThreshold = v end, 70)
+addToggle(cardHeal, "Bật Auto Heal Nút Hotbar", false, function(v) autoHealEnabled = v end, 108)
+
+-- CARD AUTO ATTACK (ĐÃ XÓA CHỌN Ô - TỰ ĐỘNG)
+local cardAtk = createCard("⚔ AUTO ATTACK (TỰ ĐỘNG DÙNG VŨ KHÍ)", 75)
+addToggle(cardAtk, "Bật Tự Động Đánh Quái/Người", false, function(v) autoAttackEnabled = v end, 36)
+
+-- CARD FIX LAG VIP
+local cardFixLag = createCard("🚀 FIX LAG VIP (BOOST FPS)", 75)
+addToggle(cardFixLag, "Bật Fix Lag Super VIP", false, function(v) 
+    fixLagEnabled = v
+    if v then
+        pcall(function()
+            settings().Rendering.QualityLevel = 1
+            lighting.GlobalShadows = false
+            lighting.FogEnd = 9e9
+
+            for _, obj in pairs(workspace:GetDescendants()) do
+                if obj:IsA("BasePart") then
+                    obj.Material = Enum.Material.SmoothPlastic
+                    obj.CastShadow = false
+                elseif obj:IsA("Decal") or obj:IsA("Texture") then
+                    obj:Destroy()
+                elseif obj:IsA("ParticleEmitter") or obj:IsA("Trail") or obj:IsA("Smoke") or obj:IsA("Fire") then
+                    obj.Enabled = false
+                end
+            end
+        end)
+    end
+end)
+
+-- CARD SPIN BOT
+local cardSpin = createCard("🌀 SPIN", 115)
+addToggle(cardSpin, "Bật Spin Bot", false, function(v) spinEnabled = v end, 36)
+addSlider(cardSpin, "Tốc Độ Xoay", 1, 200, 50, function(v) spinSpeedVal = v end, 72)
+
+local cardBoxEsp = createCard("📦 BOX ESP", 75)
+addToggle(cardBoxEsp, "Bật Viền Box ESP", false, function(v) boxEspEnabled = v end)
+
+local cardTextEsp = createCard("👁 PLAYER ESP", 75)
+addToggle(cardTextEsp, "Bật ESP Tên & Máu", false, function(v) espEnabled = v end)
+
+local cardHitbox = createCard("⬛ HITBOX EXPANDER", 75)
+addSlider(cardHitbox, "Size Hitbox", 1, 150, 1, function(v) hitboxSize = v end, 34)
+
+local cardAimbot = createCard("🎯 AIMBOT", 75)
+addToggle(cardAimbot, "Bật Aimbot Khóa Tâm", false, function(v) aimbotEnabled = v end)
+
+local cardSpeed = createCard("🏃 WALKSPEED", 75)
+addSlider(cardSpeed, "Tốc Độ", 16, 300, 16, function(v) speedVal = v end, 34)
+
+local cardFly = createCard("✈ FLY", 75)
+addToggle(cardFly, "Bật Mode Bay", false, function(v) 
+    flyEnabled = v 
+    if not v and player.Character and player.Character:FindFirstChild("Humanoid") then
+        player.Character.Humanoid.PlatformStand = false
+    end
+end)
+
+-- TOGGLE MENU
+local isOpen = true
+btnToggle.MouseButton1Click:Connect(function()
+    isOpen = not isOpen
+    btnToggle.Text = isOpen and "━" or "➕"
+    btnToggle.BackgroundColor3 = isOpen and Color3.fromRGB(255, 50, 100) or Color3.fromRGB(0, 220, 130)
+    
+    tweenService:Create(mainFrame, TweenInfo.new(0.25, Enum.EasingStyle.Quart), {
+        Size = isOpen and UDim2.new(0, 390 * scale, 0, 560 * scale) or UDim2.new(0, 390 * scale, 0, 50 * scale)
+    }):Play()
+end)
+
+-- ===================================================================
+-- SYSTEM KEYBOARD & TOUCH SIMULATION (BẤM NÚT HOTBAR MÁU 1-5)
+-- ===================================================================
+
+local keyCodes = {
+    [1] = Enum.KeyCode.One,
+    [2] = Enum.KeyCode.Two,
+    [3] = Enum.KeyCode.Three,
+    [4] = Enum.KeyCode.Four,
+    [5] = Enum.KeyCode.Five,
+}
+
+local function pressHotbarSlot(slot)
+    pcall(function()
+        local keyCode = keyCodes[slot]
+        if keyCode then
+            vim:SendKeyEvent(true, keyCode, false, game)
+            task.wait(0.01)
+            vim:SendKeyEvent(false, keyCode, false, game)
+        end
+
+        local playerGui = player:FindFirstChild("PlayerGui")
+        if playerGui then
+            local hotbar = playerGui:FindFirstChild("Hotbar") or playerGui:FindFirstChild("Inventory") or playerGui:FindFirstChild("MainGui")
+            if hotbar then
+                local slotBtn = hotbar:FindFirstChild(tostring(slot), true) or hotbar:FindFirstChild("Slot" .. tostring(slot), true)
+                if slotBtn and slotBtn:IsA("GuiButton") then
+                    for _, conn in pairs(getconnections(slotBtn.MouseButton1Click)) do
+                        conn:Fire()
+                    end
+                end
+            end
+        end
+    end)
+end
+
+-- ===================================================================
+-- SYSTEM 1: HOTBAR AUTO HEAL (SLOT 1 TO 5)
+-- ===================================================================
+
+local function doHotbarHeal()
+    if not autoHealEnabled or isHealDebounce then return end
+
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    if not hum or hum.Health <= 0 then return end
+
+    local healthPercent = (hum.Health / hum.MaxHealth) * 100
+    if healthPercent >= healHealthThreshold then return end
+
+    isHealDebounce = true
+    isCurrentlyHealing = true
+
+    task.spawn(function()
+        pcall(function()
+            -- Bấm phím / Nút Hotbar để chuyển sang ô máu
+            pressHotbarSlot(healSlotNumber)
+            task.wait(0.05)
+
+            -- Bấm chuột / chạm màn hình để dùng máu
+            vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+            task.wait(0.02)
+            vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+
+            task.wait(0.15)
+        end)
+
+        isCurrentlyHealing = false
+        task.wait(0.1)
+        isHealDebounce = false
+    end)
+end
+
+task.spawn(function()
+    while task.wait(0.05) do
+        pcall(function()
+            if autoHealEnabled and not isHealDebounce then
+                local char = player.Character
+                if char then
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        if ((hum.Health / hum.MaxHealth) * 100) < healHealthThreshold then
+                            doHotbarHeal()
+                        end
+                    end
+                end
+            end
+        end)
+    end
+end)
+
+-- ===================================================================
+-- SYSTEM 2: SMART AUTO ATTACK (KHÔNG CẦN CHỌN Ô)
+-- ===================================================================
+
+task.spawn(function()
+    while task.wait(0.08) do
+        pcall(function()
+            if not autoAttackEnabled or isCurrentlyHealing or isHealDebounce then return end
+
+            local char = player.Character
+            if not char then return end
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if not hum or hum.Health <= 0 or not hrp then return end
+
+            local closestTarget = nil
+            local minDistance = attackRange
+
+            for _, p in pairs(players:GetPlayers()) do
+                if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") and p.Character:FindFirstChild("Humanoid") then
+                    if p.Character.Humanoid.Health > 0 then
+                        local enemyHrp = p.Character.HumanoidRootPart
+                        local dist = (enemyHrp.Position - hrp.Position).Magnitude
+                        if dist < minDistance then
+                            minDistance = dist
+                            closestTarget = enemyHrp
+                        end
+                    end
+                end
+            end
+
+            if closestTarget then
+                if not spinEnabled then
+                    hrp.CFrame = CFrame.new(hrp.Position, Vector3.new(closestTarget.Position.X, hrp.Position.Y, closestTarget.Position.Z))
+                end
+
+                -- Tự động kích hoạt đòn đánh dựa theo món vũ khí đang cầm trên tay
+                local activeTool = char:FindFirstChildOfClass("Tool")
+                if activeTool then
+                    activeTool:Activate()
+                else
+                    vim:SendMouseButtonEvent(0, 0, 0, true, game, 0)
+                    task.wait(0.01)
+                    vim:SendMouseButtonEvent(0, 0, 0, false, game, 0)
+                end
+            end
+        end)
+    end
+end)
+
+-- ===================================================================
+-- SYSTEM 3: SPIN BOT MECHANISM
+-- ===================================================================
+
+runService.RenderStepped:Connect(function()
+    if spinEnabled then
+        local char = player.Character
+        if char then
+            local hrp = char:FindFirstChild("HumanoidRootPart")
+            if hrp then
+                hrp.CFrame = hrp.CFrame * CFrame.Angles(0, math.rad(spinSpeedVal), 0)
+            end
+        end
+    end
+end)
+
+-- ===================================================================
+-- SYSTEM 4: ESP & UTILITIES
+-- ===================================================================
+
+local function applyEspToPlayer(plr)
+    if plr == player then return end
+
+    local function setupChar(char)
+        if not char then return end
+
+        local highlight = espFolder:FindFirstChild(plr.Name .. "_Highlight") or Instance.new("Highlight")
+        highlight.Name = plr.Name .. "_Highlight"
+        highlight.FillColor = Color3.fromRGB(180, 50, 255)
+        highlight.FillTransparency = 0.6
+        highlight.OutlineColor = Color3.fromRGB(0, 255, 204)
+        highlight.OutlineTransparency = 0
+        highlight.Adornee = char
+        highlight.Enabled = false
+        highlight.Parent = espFolder
+
+        local hrp = char:WaitForChild("HumanoidRootPart", 5)
+        if not hrp then return end
+
+        local bbGui = espFolder:FindFirstChild(plr.Name .. "_BBGui") or Instance.new("BillboardGui")
+        bbGui.Name = plr.Name .. "_BBGui"
+        bbGui.AlwaysOnTop = true
+        bbGui.Size = UDim2.new(0, 200, 0, 45)
+        bbGui.StudsOffset = Vector3.new(0, 3.8, 0)
+        bbGui.Adornee = hrp
+        bbGui.Enabled = false
+        bbGui.Parent = espFolder
+
+        local nameTxt = bbGui:FindFirstChild("NameTxt") or Instance.new("TextLabel")
+        nameTxt.Name = "NameTxt"
+        nameTxt.Size = UDim2.new(1, 0, 0.5, 0)
+        nameTxt.BackgroundTransparency = 1
+        nameTxt.TextColor3 = Color3.fromRGB(0, 255, 204)
+        nameTxt.TextStrokeTransparency = 0.2
+        nameTxt.Font = Enum.Font.GothamBold
+        nameTxt.TextSize = 13 * scale
+        nameTxt.Parent = bbGui
+
+        local hpTxt = bbGui:FindFirstChild("HpTxt") or Instance.new("TextLabel")
+        hpTxt.Name = "HpTxt"
+        hpTxt.Size = UDim2.new(1, 0, 0.5, 0)
+        hpTxt.Position = UDim2.new(0, 0, 0.5, 0)
+        hpTxt.BackgroundTransparency = 1
+        hpTxt.TextColor3 = Color3.fromRGB(255, 80, 120)
+        hpTxt.TextStrokeTransparency = 0.2
+        hpTxt.Font = Enum.Font.GothamMedium
+        hpTxt.TextSize = 11 * scale
+        hpTxt.Parent = bbGui
+    end
+
+    if plr.Character then setupChar(plr.Character) end
+    plr.CharacterAdded:Connect(setupChar)
+end
+
+for _, p in pairs(players:GetPlayers()) do applyEspToPlayer(p) end
+players.PlayerAdded:Connect(applyEspToPlayer)
+
+runService.RenderStepped:Connect(function()
+    for _, p in pairs(players:GetPlayers()) do
+        if p ~= player then
+            local highlight = espFolder:FindFirstChild(p.Name .. "_Highlight")
+            local bbGui = espFolder:FindFirstChild(p.Name .. "_BBGui")
+
+            if p.Character and p.Character:FindFirstChild("Humanoid") and p.Character:FindFirstChild("HumanoidRootPart") then
+                local hum = p.Character.Humanoid
+                local hrp = p.Character.HumanoidRootPart
+
+                if hum.Health > 0 then
+                    if highlight then highlight.Enabled = boxEspEnabled end
+                    if bbGui then
+                        bbGui.Enabled = espEnabled
+                        if espEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            local myHrp = player.Character.HumanoidRootPart
+                            local dist = math.floor((hrp.Position - myHrp.Position).Magnitude)
+                            bbGui.NameTxt.Text = p.Name .. " [" .. tostring(dist) .. "m]"
+                            bbGui.HpTxt.Text = "HP: " .. tostring(math.floor(hum.Health)) .. "/" .. tostring(math.floor(hum.MaxHealth))
+                        end
+                    end
+                else
+                    if highlight then highlight.Enabled = false end
+                    if bbGui then bbGui.Enabled = false end
+                end
+            else
+                if highlight then highlight.Enabled = false end
+                if bbGui then bbGui.Enabled = false end
+            end
+        end
+    end
+end)
+
+-- HITBOX
+runService.RenderStepped:Connect(function()
+    if hitboxSize > 1 then
+        for _, p in pairs(players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+                local targetHrp = p.Character.HumanoidRootPart
+                targetHrp.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
+                targetHrp.Transparency = 0.75
+                targetHrp.BrickColor = BrickColor.new("Electric blue")
+                targetHrp.Material = Enum.Material.Neon
+                targetHrp.CanCollide = false
+            end
+        end
+    end
+end)
+
+-- AIMBOT
+runService.RenderStepped:Connect(function()
+    if aimbotEnabled and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+        local cam = workspace.CurrentCamera
+        local closestTarget = nil
+        local maxDist = 250
+
+        for _, p in pairs(players:GetPlayers()) do
+            if p ~= player and p.Character and p.Character:FindFirstChild("Head") and p.Character:FindFirstChild("Humanoid") and p.Character.Humanoid.Health > 0 then
+                local head = p.Character.Head
+                local screenPos, onScreen = cam:WorldToViewportPoint(head.Position)
+                if onScreen then
+                    local mouseDist = (Vector2.new(screenPos.X, screenPos.Y) - Vector2.new(mouse.X, mouse.Y)).Magnitude
+                    if mouseDist < maxDist then
+                        maxDist = mouseDist
+                        closestTarget = head
+                    end
+                end
+            end
+        end
+
+        if closestTarget then
+            cam.CFrame = cam.CFrame:Lerp(CFrame.new(cam.CFrame.Position, closestTarget.Position), aimbotSmoothness)
+        end
+    end
+end)
+
+-- SPEED & FLY
+runService.RenderStepped:Connect(function()
+    local char = player.Character
+    if not char then return end
+    local hum = char:FindFirstChildOfClass("Humanoid")
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+
+    if hum and hum.Health > 0 then
+        hum.WalkSpeed = speedVal
+    end
+
+    if flyEnabled and hrp and hum then
+        hum.PlatformStand = true
+        local cam = workspace.CurrentCamera
+        local moveDir = Vector3.zero
+
+        if userInput:IsKeyDown(Enum.KeyCode.W) then moveDir = moveDir + cam.CFrame.LookVector end
+        if userInput:IsKeyDown(Enum.KeyCode.S) then moveDir = moveDir - cam.CFrame.LookVector end
+        if userInput:IsKeyDown(Enum.KeyCode.A) then moveDir = moveDir - cam.CFrame.RightVector end
+        if userInput:IsKeyDown(Enum.KeyCode.D) then moveDir = moveDir + cam.CFrame.RightVector end
+        if userInput:IsKeyDown(Enum.KeyCode.Space) then moveDir = moveDir + Vector3.new(0, 1, 0) end
+        if userInput:IsKeyDown(Enum.KeyCode.LeftShift) then moveDir = moveDir - Vector3.new(0, 1, 0) end
+
+        hrp.Velocity = moveDir * (flySpeedVal * 4)
+    end
+end)
+
+-- NOTIFICATION
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "❖ QUOC HUY HUB V1.0",
+    Text = "Bố mày là vua",
+    Duration = 6
+})
